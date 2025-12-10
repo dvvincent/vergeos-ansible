@@ -56,9 +56,7 @@ Create snapshots for your VMs.
 ansible-playbook playbooks/manage-snapshots.yml -e "vm_name=prod-web-01"
 ```
 
-## Documentation
 
-See [BLOG-POST.md](BLOG-POST.md) for a detailed walkthrough of the journey to build these automations.
 
 ## License
 
