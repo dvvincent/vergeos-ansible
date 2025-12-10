@@ -41,7 +41,7 @@ ansible-playbook playbooks/deploy-vm-production.yml
 ```
 
 **What it does:**
-1. Imports OVA/qcow2 image.
+1. Imports OVA image.
 2. Identifies the Machine ID (distinct from VM ID).
 3. Upgrades Machine Type to `q35` (UEFI/Modern).
 4. Removes incompatible IDE CD-ROMs.
