@@ -1,0 +1,8 @@
+---
+# VergeOS Connection Details
+# Rename this file to all.yml and fill in your details
+
+vergeos_host: "192.168.1.111"
+vergeos_username: "admin"
+vergeos_password: "YOUR_PASSWORD_HERE"
+vergeos_insecure: true

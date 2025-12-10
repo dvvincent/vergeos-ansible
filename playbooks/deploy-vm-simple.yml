@@ -1,0 +1,67 @@
+---
+# Simple VM Creation Playbook
+# Allows creating a VM from scratch (empty disk)
+# Note: Use deploy-vm-production.yml for importing OVAs/Images
+
+- name: Create Simple VM
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    # VergeOS Connection
+    # vergeos_host: "192.168.1.111"
+    # vergeos_username: "admin"
+    # vergeos_password: "password"
+    
+    vm_name: "log-server-01"
+    vm_description: "Log Server created with Ansible"
+    cpu_cores: 2
+    ram_mb: 2048
+    disk_size_gb: 50
+    network_name: "Internal"
+
+  tasks:
+    - name: Create VM
+      vergeio.vergeos.vm:
+        host: "{{ vergeos_host }}"
+        username: "{{ vergeos_username }}"
+        password: "{{ vergeos_password }}"
+        insecure: "{{ vergeos_insecure | default(true) }}"
+        name: "{{ vm_name }}"
+        description: "{{ vm_description }}"
+        enabled: true
+        os_family: linux
+        cpu_cores: "{{ cpu_cores }}"
+        ram: "{{ ram_mb }}"
+        machine_type: q35
+        state: present
+
+    # Note: As of v1.0.0, the 'drive' module has a known issue where it reports success
+    # but may failing to create drives in some scenarios.
+    # It is recommended to use the 'vm_import' module (deploy-vm-production.yml)
+    # or create drives via API URI module if needed.
+    
+    - name: Add NIC
+      vergeio.vergeos.nic:
+        host: "{{ vergeos_host }}"
+        username: "{{ vergeos_username }}"
+        password: "{{ vergeos_password }}"
+        insecure: "{{ vergeos_insecure | default(true) }}"
+        vm_name: "{{ vm_name }}"
+        network: "{{ network_name }}"
+        nic_type: virtio
+        enabled: true
+        state: present
+
+    - name: Power On
+      vergeio.vergeos.vm:
+        host: "{{ vergeos_host }}"
+        username: "{{ vergeos_username }}"
+        password: "{{ vergeos_password }}"
+        insecure: "{{ vergeos_insecure | default(true) }}"
+        name: "{{ vm_name }}"
+        state: running
+
+    - name: Display Status
+      ansible.builtin.debug:
+        msg: "VM {{ vm_name }} created and powered on."

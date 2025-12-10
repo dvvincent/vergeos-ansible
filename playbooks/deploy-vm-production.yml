@@ -1,0 +1,164 @@
+---
+# Production-Ready Import Workflow for VergeOS
+# This playbook handles legacy OVAs correctly by:
+# 1. Importing the OVA
+# 2. Upgrading Machine Type to Q35 (UEFI/Modern)
+# 3. Removing legacy IDE CD-ROMs (incompatible with Q35)
+# 4. Upgrading disks to VirtIO-SCSI (Best Performance)
+# 5. Configuring Network & Cloud-Init
+# 6. Powering On
+
+- name: Deploy Production VM from OVA
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    # VergeOS Connection - Set these in group_vars or via -e
+    # vergeos_host: "192.168.1.111"
+    # vergeos_username: "admin"
+    # vergeos_password: "password"
+    
+    # VM Configuration
+    vm_name: "prod-web-01"
+    vm_hostname: "web-01"
+    ova_file_name: "noble-server-cloudimg-amd64.ova"
+    target_machine_type: "q35"
+    
+    # Network Configuration
+    network_name: "External"
+    network_interface: "ens3"
+    ip_address: "10.0.6.205/24"
+    gateway: "10.0.6.1"
+    dns_servers: ["8.8.8.8", "1.1.1.1"]
+
+  tasks:
+    - name: 1. Import VM from OVA
+      vergeio.vergeos.vm_import:
+        host: "{{ vergeos_host }}"
+        username: "{{ vergeos_username }}"
+        password: "{{ vergeos_password }}"
+        insecure: "{{ vergeos_insecure | default(true) }}"
+        ova_file_name: "{{ ova_file_name }}"
+        name: "{{ vm_name }}"
+        preserve_macs: false
+        preferred_tier: "1"
+        override_drive_interface: virtio
+        override_nic_interface: virtio
+        poll_interval: 5
+        poll_timeout: 600
+      register: import_result
+
+    - name: 2. Get VM Details (Find Machine ID)
+      ansible.builtin.uri:
+        url: "https://{{ vergeos_host }}/api/v4/vms/{{ import_result.vm_id }}"
+        method: GET
+        user: "{{ vergeos_username }}"
+        password: "{{ vergeos_password }}"
+        force_basic_auth: yes
+        validate_certs: no
+      register: vm_details
+
+    - name: Set Machine ID Fact
+      ansible.builtin.set_fact:
+        machine_id: "{{ vm_details.json.machine }}"
+
+    - name: 3. Upgrade to Q35 Machine Type
+      ansible.builtin.uri:
+        url: "https://{{ vergeos_host }}/api/v4/vms/{{ import_result.vm_id }}"
+        method: PUT
+        user: "{{ vergeos_username }}"
+        password: "{{ vergeos_password }}"
+        force_basic_auth: yes
+        validate_certs: no
+        body_format: json
+        body:
+          machine_type: "{{ target_machine_type }}"
+        status_code: [200, 204]
+
+    - name: 4. Get All Drives
+      ansible.builtin.uri:
+        url: "https://{{ vergeos_host }}/api/v4/machine_drives?machine={{ machine_id }}"
+        method: GET
+        user: "{{ vergeos_username }}"
+        password: "{{ vergeos_password }}"
+        force_basic_auth: yes
+        validate_certs: no
+      register: all_drives
+
+    - name: 5. Remove Legacy IDE CD-ROMs
+      ansible.builtin.uri:
+        url: "https://{{ vergeos_host }}/api/v4/machine_drives/{{ item['$key'] }}"
+        method: DELETE
+        user: "{{ vergeos_username }}"
+        password: "{{ vergeos_password }}"
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: [200, 204]
+      # Filter for drives belonging to THIS machine that are CDROMs
+      loop: "{{ all_drives.json | selectattr('machine', 'equalto', machine_id | int) | selectattr('media', 'equalto', 'cdrom') | list }}"
+      loop_control:
+        label: "Removing {{ item.name }} ({{ item.media }})"
+
+    - name: 6. Upgrade Disks to VirtIO-SCSI
+      ansible.builtin.uri:
+        url: "https://{{ vergeos_host }}/api/v4/machine_drives/{{ item['$key'] }}"
+        method: PUT
+        user: "{{ vergeos_username }}"
+        password: "{{ vergeos_password }}"
+        force_basic_auth: yes
+        validate_certs: no
+        body_format: json
+        body:
+          interface: "virtio-scsi"
+        status_code: [200, 204]
+      # Filter for drives belonging to THIS machine that are Disks
+      loop: "{{ all_drives.json | selectattr('machine', 'equalto', machine_id | int) | selectattr('media', 'equalto', 'disk') | list }}"
+      loop_control:
+        label: "Updating {{ item.name }} to VirtIO-SCSI"
+
+    - name: 7. Attach NIC
+      vergeio.vergeos.nic:
+        host: "{{ vergeos_host }}"
+        username: "{{ vergeos_username }}"
+        password: "{{ vergeos_password }}"
+        insecure: "{{ vergeos_insecure | default(true) }}"
+        vm_name: "{{ vm_name }}"
+        network: "{{ network_name }}"
+        state: present
+        nic_type: virtio
+        enabled: true
+
+    - name: 8. Configure Cloud-Init
+      vergeio.vergeos.cloud_init:
+        host: "{{ vergeos_host }}"
+        username: "{{ vergeos_username }}"
+        password: "{{ vergeos_password }}"
+        insecure: "{{ vergeos_insecure | default(true) }}"
+        vm_name: "{{ vm_name }}"
+        datasource: nocloud
+        hostname: "{{ vm_hostname }}"
+        network:
+          interface: "{{ network_interface }}"
+          address: "{{ ip_address }}"
+          gateway: "{{ gateway }}"
+          nameservers: "{{ dns_servers }}"
+
+    - name: 9. Power On
+      vergeio.vergeos.vm:
+        host: "{{ vergeos_host }}"
+        username: "{{ vergeos_username }}"
+        password: "{{ vergeos_password }}"
+        insecure: "{{ vergeos_insecure | default(true) }}"
+        name: "{{ vm_name }}"
+        state: running
+
+    - name: Display Final Status
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          VM Deployed: {{ vm_name }}
+          ========================================
+          IP: {{ ip_address }}
+          Machine Type: {{ target_machine_type }}
+          Storage: VirtIO-SCSI (Optimized)
+          Status: Running

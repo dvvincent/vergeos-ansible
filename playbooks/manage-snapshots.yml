@@ -1,0 +1,32 @@
+---
+# VM Snapshot Management
+# Usage: ansible-playbook manage-snapshots.yml -e "vm_name=prod-web-01"
+
+- name: Manage VM Snapshots
+  hosts: localhost
+  gather_facts: true
+
+  vars:
+    # vergeos_host: "192.168.1.111"
+    # vergeos_username: "admin"
+    # vergeos_password: "password"
+    
+    vm_name: "prod-web-01"
+    snapshot_name: "ansible-backup-{{ ansible_date_time.iso8601_basic_short }}"
+
+  tasks:
+    - name: Create Snapshot
+      vergeio.vergeos.vm_snapshot:
+        host: "{{ vergeos_host }}"
+        username: "{{ vergeos_username }}"
+        password: "{{ vergeos_password }}"
+        insecure: "{{ vergeos_insecure | default(true) }}"
+        vm_name: "{{ vm_name }}"
+        snapshot_name: "{{ snapshot_name }}"
+        description: "Created by Ansible"
+        operation: create
+      register: snap_result
+
+    - name: Display Result
+      ansible.builtin.debug:
+        msg: "Snapshot '{{ snapshot_name }}' created for VM '{{ vm_name }}'"

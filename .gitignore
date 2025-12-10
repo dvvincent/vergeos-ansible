@@ -1,0 +1,11 @@
+# Ignore the blog post
+BLOG-POST.md
+
+# Ignore credentials
+group_vars/all.yml
+!group_vars/all.yml.example
+
+# Ansible artifacts
+*.retry
+*.log
+.ansible/
